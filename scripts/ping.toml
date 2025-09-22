@@ -1,0 +1,17 @@
+[net]
+ip = "127.0.0.1"
+port = 4242
+
+[exp]
+duration = "10"
+value_size = 1024
+key_space_size = 5000000
+server_storage_impl = "none" # [none, hash-map, b-tree-map]
+work_type = "ping" # [ping, file, touch-random:amt, touch-repeated:{amt}, touch-sequential:{amt}]
+
+[client]
+taskset = "0"
+num_clients = 1
+
+[server]
+taskset = "2-5"
