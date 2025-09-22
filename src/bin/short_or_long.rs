@@ -1,4 +1,4 @@
-use perf_examples::*;
+use perf_examples::short_long::*;
 use rand::Rng;
 
 fn main() {
