@@ -6,8 +6,8 @@ port = 4242
 duration = "10"
 value_size = 1024
 key_space_size = 5000000
-server_storage_impl = "none" # [none, hash-map, b-tree-map]
-work_type = "ping" # [ping, file, touch-random:amt, touch-repeated:{amt}, touch-sequential:{amt}]
+server_storage_impl = "hash-map" # [none, hash-map, b-tree-map]
+work_type = "touch-random:1" # [ping, file, touch-random:{amt}, touch-repeated:{amt}, touch-sequential:{amt}]
 
 [client]
 taskset = "0"

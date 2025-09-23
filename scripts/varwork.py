@@ -6,7 +6,7 @@ cfg_keys = {
     "net": ["ip", "port"],
     "exp": ["duration", "value_size", "key_space_size", "server_storage_impl", "work_type"],
     "client": ["taskset", "num_clients"],
-    "server": ["taskset"],
+    "server": ["taskset", "record_dcache"],
 }
 
 def build():
@@ -26,6 +26,9 @@ class Exp:
         self.server_storage_impl = cfg["server_storage_impl"]
         self.work_type = cfg["work_type"]
 
+    def __str__(self):
+        return f"Exp<duration: {self.duration}, value_size: {self.value_size}, keyspace: {self.key_space_size}, storage: {self.server_storage_impl}, workload: {self.work_type}>"
+
 def check_file(fn, search_str):
     with open(fn, 'r') as f:
         found = False
@@ -35,21 +38,28 @@ def check_file(fn, search_str):
                 break
         assert found, f"{fn} did not contain {search_str}"
 
-def start_server(port, taskset, exp, outdir):
-    sh.Popen(f"flamegraph \
-              -o {outdir}/flamegraph.{exp.server_storage_impl}.{exp.work_type}.svg -- \
-            taskset \
-              -c {taskset} \
-            ./target/release/varwork \
-			  --duration {exp.duration} \
-			  --keyspace {exp.key_space_size} \
-			  --value-size {exp.value_size} \
-              server \
-                --port {port} \
-                --storage {exp.server_storage_impl} \
-           > {outdir}/server.out \
-           2> {outdir}/server.err",
-           shell=True)
+def start_server(port, taskset, record_dcache, exp, outdir):
+    perf_args = f"-c \"record -o {outdir}/perf.data"
+    if record_dcache:
+        perf_args += " -e L1-dcache-load-misses --call-graph dwarf,64000"
+    perf_args += "\""
+    sh.Popen(f"\
+        flamegraph \
+          -o {outdir}/flamegraph.{exp.server_storage_impl}.{exp.work_type}.svg \
+          {perf_args} \
+          -- \
+        taskset \
+          -c {taskset} \
+        ./target/release/varwork \
+	      --duration {exp.duration} \
+	      --keyspace {exp.key_space_size} \
+	      --value-size {exp.value_size} \
+        server \
+          --port {port} \
+          --storage {exp.server_storage_impl} \
+      > {outdir}/server.out \
+      2> {outdir}/server.err",
+      shell=True)
     import time
     start = time.time()
     while True:
@@ -58,24 +68,25 @@ def start_server(port, taskset, exp, outdir):
             check_file(f"{outdir}/server.out", "Server listening")
             break
         except Exception as e:
-            if time.time() - start > 10:
+            if time.time() - start > float(exp.duration) * 1.5:
                 raise e
 
 def run_client(ip, port, taskset, n_clients, exp, outdir):
-	sh.run(f"taskset \
-            -c {taskset} \
-        ./target/release/varwork \
-		  --duration {exp.duration} \
-		  --keyspace {exp.key_space_size} \
-		  --value-size {exp.value_size} \
-		client \
-	      --ip {ip} \
-	      --port {port} \
-	      --n-clients {n_clients} \
-	      --workload {exp.work_type} \
-        > {outdir}/client.out \
-        2> {outdir}/client.err",
-        shell=True)
+	sh.run(f"\
+      taskset \
+        -c {taskset} \
+      ./target/release/varwork \
+	    --duration {exp.duration} \
+	    --keyspace {exp.key_space_size} \
+	    --value-size {exp.value_size} \
+	  client \
+	    --ip {ip} \
+	    --port {port} \
+	    --n-clients {n_clients} \
+	    --workload {exp.work_type} \
+      > {outdir}/client.out \
+      2> {outdir}/client.err",
+      shell=True)
 
 def run(ip, port, client, server, exp, outdir, setup_only=False):
     logging.info(f"running {exp}")
@@ -86,7 +97,12 @@ def run(ip, port, client, server, exp, outdir, setup_only=False):
         return
 
     logging.debug("starting server")
-    start_server(port, server["taskset"], exp, outdir)
+    start_server(
+      port,
+      server["taskset"],
+      bool(server["record_dcache"]),
+      exp,
+      outdir)
 
     logging.debug("running client")
     run_client(
@@ -98,12 +114,13 @@ def run(ip, port, client, server, exp, outdir, setup_only=False):
       outdir)
     logging.info("done")
 
+    sh.run("sudo pkill -INT varwork", shell=True)
+
 if __name__ == '__main__':
     import argparse
     import toml
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True)
-    parser.add_argument('--outdir', type=str, required=True)
     parser.add_argument('--loglevel', type=str, default='INFO')
     parser.add_argument('--overwrite', action='store_true')
     parser.add_argument('--setup_only', action='store_true',  required=False)
@@ -112,7 +129,7 @@ if __name__ == '__main__':
 
     cfg = toml.load(args.config)
     logging.info(f"read config from {args.config}: {cfg}")
-
+    args.outdir = os.path.basename(args.config).split('.')[0]
     if os.path.exists(args.outdir) and args.overwrite:
         sh.run("rm -rf {args.outdir}", shell=True)
 
