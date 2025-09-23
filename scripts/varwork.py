@@ -39,9 +39,9 @@ def check_file(fn, search_str):
         assert found, f"{fn} did not contain {search_str}"
 
 def start_server(port, taskset, record_dcache, exp, outdir):
-    perf_args = f"-c \"record -o {outdir}/perf.data"
+    perf_args = f"-c \"record -o {outdir}/perf.data --call-graph dwarf,64000"
     if record_dcache:
-        perf_args += " -e L1-dcache-load-misses --call-graph dwarf,64000"
+        perf_args += " -e L1-dcache-load-misses"
     perf_args += "\""
     sh.Popen(f"\
         flamegraph \
