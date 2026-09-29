@@ -1,2 +1,5 @@
-/target
-scripts/venv
+*
+!src
+!Cargo.toml
+!README.md
+!scripts/

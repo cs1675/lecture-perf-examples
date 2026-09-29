@@ -1,0 +1,16 @@
+[project]
+name = "scripts"
+version = "0.1.0"
+description = "Run varying work"
+readme = "README.md"
+authors = [
+    { name = "Akshay Narayan", email = "akshayn@brown.edu" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "toml>=0.10.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
