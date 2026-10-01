@@ -3,3 +3,5 @@
 !Cargo.toml
 !README.md
 !scripts/
+!scripts/*.py
+!scripts/*.toml
