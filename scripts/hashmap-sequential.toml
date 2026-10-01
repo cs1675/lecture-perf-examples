@@ -6,8 +6,8 @@ port = 4242
 duration = "10"
 value_size = 1024
 key_space_size = 5000000
-server_storage_impl = "hash-map" # [none, hash-map, b-tree-map]
-work_type = "touch-sequential:500" # [ping, file, touch-random:{amt}, touch-repeated:{amt}, touch-sequential:{amt}]
+server_storage_impl = "hash-map"
+work_type = "touch-sequential:500"
 
 [client]
 taskset = "0"
@@ -15,4 +15,4 @@ num_clients = 1
 
 [server]
 taskset = "2-5"
-record_dcache = true
+record_dcache = "event"

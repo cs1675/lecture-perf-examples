@@ -15,4 +15,4 @@ num_clients = 1
 
 [server]
 taskset = "2-5"
-record_dcache = true
+record_dcache = "event"

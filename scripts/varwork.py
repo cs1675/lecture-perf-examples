@@ -11,6 +11,7 @@ cfg_keys = {
 
 def build():
     sh.run("cargo build --release --features=\"varwork\" --bin=\"varwork\"", shell=True)
+record_dcache_modes = ["off", "record", "event"]
 
 class Exp:
     duration = None
@@ -39,15 +40,19 @@ def check_file(fn, search_str):
         assert found, f"{fn} did not contain {search_str}"
 
 def start_server(port, taskset, record_dcache, exp, outdir):
-    perf_args = f"-c \"record -o {outdir}/perf.data --call-graph dwarf,64000"
-    if record_dcache:
-        perf_args += " -e L1-dcache-load-misses"
-    perf_args += "\""
-    sh.Popen(f"\
+    prefix = ""
+    if record_dcache != "event":
+        perf_args = f"-c \"record -o {outdir}/perf.data --call-graph dwarf,64000"
+        if record_dcache == "record":
+            perf_args += " -e L1-dcache-load-misses"
+        perf_args += "\""
+        prefix = f"\
         flamegraph \
           -o {outdir}/flamegraph.{exp.server_storage_impl}.{exp.work_type}.svg \
           {perf_args} \
-          -- \
+          --"
+    sh.Popen(f"\
+        {prefix} \
         taskset \
           -c {taskset} \
         ./target/release/varwork \
@@ -100,7 +105,7 @@ def run(ip, port, client, server, exp, outdir, setup_only=False):
     start_server(
       port,
       server["taskset"],
-      bool(server["record_dcache"]),
+      server["record_dcache"],
       exp,
       outdir)
 
@@ -140,6 +145,9 @@ if __name__ == '__main__':
         cfgval = cfg[val]
         for key in cfg_keys[val]:
             assert key in cfgval
+
+    assert cfg["server"]["record_dcache"] in record_dcache_modes, \
+        f"record_dcache must be one of {record_dcache_modes}"
 
     sh.run(f"cp {args.config} {args.outdir}/exp.toml", shell=True)
 
