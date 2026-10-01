@@ -86,6 +86,8 @@ fn handle_conn(
     dur: Duration,
 ) -> Result<Vec<(u64, u64)>, anyhow::Error> {
     let mut timing = Vec::new();
+    #[cfg(feature = "perf")]
+    let mut counters = L1Counters::new()?;
     let start = Instant::now();
     while start.elapsed() < dur {
         /*
@@ -105,9 +107,13 @@ fn handle_conn(
          *
          * Update the work response message with this time.
          */
+        #[cfg(feature = "perf")]
+        counters.start()?;
         let now = Instant::now();
         let mut response = do_work(msg, &s);
         let work_d = now.elapsed().as_micros() as u64;
+        #[cfg(feature = "perf")]
+        counters.stop()?;
 
         match &mut response {
             Message::Ok { work_duration, .. } => {
@@ -127,7 +133,97 @@ fn handle_conn(
         timing.push((total_time, work_d));
     }
 
+    #[cfg(feature = "perf")]
+    counters.report()?;
+
     Ok(timing)
+}
+
+#[cfg(feature = "perf")]
+struct L1Counters {
+    group: perf_event::Group,
+    access: perf_event::Counter,
+    miss: perf_event::Counter,
+    calls: u64,
+}
+
+#[cfg(feature = "perf")]
+impl L1Counters {
+    fn new() -> Result<Self, anyhow::Error> {
+        use perf_event::events::{Cache, CacheOp, CacheResult, WhichCache};
+        use perf_event::{Builder, Group};
+
+        const ACCESS: Cache = Cache {
+            which: WhichCache::L1D,
+            operation: CacheOp::READ,
+            result: CacheResult::ACCESS,
+        };
+        const MISS: Cache = Cache {
+            result: CacheResult::MISS,
+            ..ACCESS
+        };
+
+        let mut group = Group::new()?;
+        let access = Builder::new().group(&mut group).kind(ACCESS).build()?;
+        let miss = Builder::new().group(&mut group).kind(MISS).build()?;
+        Ok(Self {
+            group,
+            access,
+            miss,
+            calls: 0,
+        })
+    }
+
+    fn start(&mut self) -> Result<(), anyhow::Error> {
+        self.group.enable()?;
+        Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), anyhow::Error> {
+        self.group.disable()?;
+        self.calls += 1;
+        Ok(())
+    }
+
+    fn report(&mut self) -> Result<(), anyhow::Error> {
+        let counts = self.group.read()?;
+        let access = counts[&self.access];
+        let miss = counts[&self.miss];
+        let calls = self.calls.max(1) as f64;
+
+        println!();
+        println!("=======================================");
+        println!("L1 dcache loads in do_work");
+        println!("=======================================");
+        println!();
+        println!("{0: <12} | {1: <14} | {2: <10}", " ", "total", "per call");
+        println!("{0: <12} | {1: <14} | {2: <10}", "calls", self.calls, 1);
+        println!(
+            "{0: <12} | {1: <14} | {2:0.2}",
+            "accesses",
+            access,
+            access as f64 / calls
+        );
+        println!(
+            "{0: <12} | {1: <14} | {2:0.2}",
+            "misses",
+            miss,
+            miss as f64 / calls
+        );
+        println!(
+            "{0: <12} | {1:0.2}%",
+            "miss rate",
+            miss as f64 / access.max(1) as f64 * 100.
+        );
+        if counts.time_running() < counts.time_enabled() {
+            println!(
+                "warning: counters were multiplexed (running {} of {} ns enabled)",
+                counts.time_running(),
+                counts.time_enabled()
+            );
+        }
+        Ok(())
+    }
 }
 
 fn do_work(msg: Message, s: &Storage) -> Message {

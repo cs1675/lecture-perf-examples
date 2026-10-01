@@ -9,9 +9,11 @@ cfg_keys = {
     "server": ["taskset", "record_dcache"],
 }
 
-def build():
-    sh.run("cargo build --release --features=\"varwork\" --bin=\"varwork\"", shell=True)
 record_dcache_modes = ["off", "record", "event"]
+
+def build(record_dcache):
+    features = "perf" if record_dcache == "event" else "varwork"
+    sh.run(f"cargo build --release --features=\"{features}\" --bin=\"varwork\"", shell=True)
 
 class Exp:
     duration = None
@@ -96,7 +98,7 @@ def run_client(ip, port, taskset, n_clients, exp, outdir):
 def run(ip, port, client, server, exp, outdir, setup_only=False):
     logging.info(f"running {exp}")
     logging.debug("building varwork app")
-    build()
+    build(server["record_dcache"])
     logging.debug("done building")
     if setup_only:
         return
